@@ -1,96 +1,40 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <algorithm>
+def main():
+    T = int(input())
+    for _ in range(T):
+        A = input().strip()
+        B = input().strip()
+        result = []
 
-// Using std::string directly can be slow for competitive programming.
-// It's often better to use C-style strings or a custom string builder.
-// However, for this problem, optimizing the algorithm is the key.
-using namespace std;
+        i = j = 0
+        while i < len(A) or j < len(B):
+            k, l = i, j
+            while k < len(A) and l < len(B) and A[k] == B[l]:
+                k += 1
+                l += 1
 
-/**
- * @brief Generates the lexicographically smallest string by merging two strings.
- *
- * The core logic is a greedy approach. At each step, we compare the remaining
- * parts of string 'a' and string 'b' and append the smaller one's first character
- * to our result.
- *
- * The optimization comes from avoiding the creation of substrings in a loop.
- * When the current characters `a[i]` and `b[j]` are the same, instead of calling
- * `a.substr(i)` and `b.substr(j)`, we use two new pointers, `p1` and `p2`, to
- * find the first characters that differ. This manual comparison is much more
- * efficient and avoids the O(N^2) complexity of the original solution.
- *
- * @param a The first string.
- * @param b The second string.
- * @return The lexicographically smallest merged string.
- */
-string morganAndString(string a, string b) {
-    string res = "";
-    int n = a.length();
-    int m = b.length();
-    int i = 0, j = 0;
+            if k == len(A):
+                l = j
+                while j < len(B) and B[j] == B[l]:
+                    result.append(B[j])
+                    j += 1
+            elif l == len(B):
+                k = i
+                while i < len(A) and A[i] == A[k]:
+                    result.append(A[i])
+                    i += 1
+            elif A[k] < B[l]:
+                k = i
+                while i < len(A) and A[i] == A[k]:
+                    result.append(A[i])
+                    i += 1
+            else:
+                l = j
+                while j < len(B) and B[j] == B[l]:
+                    result.append(B[j])
+                    j += 1
 
-    // Pre-allocating memory for the result string can provide a small performance boost
-    // by avoiding multiple reallocations as the string grows.
-    res.reserve(n + m);
+        print(''.join(result))
 
-    while (i < n || j < m) {
-        bool take_from_a;
-        if (i < n && j < m) {
-            if (a[i] < b[j]) {
-                take_from_a = true;
-            } else if (b[j] < a[i]) {
-                take_from_a = false;
-            } else {
-                // The characters are equal, so we need to look ahead to decide.
-                // This block replaces the slow `a.substr(i) < b.substr(j)` call.
-                int p1 = i;
-                int p2 = j;
-                while (p1 < n && p2 < m && a[p1] == b[p2]) {
-                    p1++;
-                    p2++;
-                }
-                // If one string is a prefix of the other (from the current point),
-                // the shorter one is lexicographically smaller.
-                if (p2 == m) { // Suffix of b is a prefix of suffix of a
-                    take_from_a = true;
-                } else if (p1 == n) { // Suffix of a is a prefix of suffix of b
-                    take_from_a = false;
-                } else {
-                    // Otherwise, the decision is based on the first differing character.
-                    take_from_a = (a[p1] < b[p2]);
-                }
-            }
-        } else if (i < n) {
-            // String 'b' is exhausted, must take from 'a'.
-            take_from_a = true;
-        } else {
-            // String 'a' is exhausted, must take from 'b'.
-            take_from_a = false;
-        }
 
-        if (take_from_a) {
-            res += a[i++];
-        } else {
-            res += b[j++];
-        }
-    }
-
-    return res;
-}
-
-int main() {
-    // Fast I/O
-    ios_base::sync_with_stdio(false);
-    cin.tie(NULL);
-
-    int t;
-    cin >> t;
-    while (t--) {
-        string a, b;
-        cin >> a >> b;
-        cout << morganAndString(a, b) << "\n";
-    }
-    return 0;
-}
+if __name__ == "__main__":
+    main()
