@@ -1,0 +1,208 @@
+import sys
+from functools import cmp_to_key
+
+def solve():
+    # Read entire STDIN into a single flat array for extremely fast I/O processing
+    input_data = sys.stdin.read().split()
+    if not input_data:
+        return
+    
+    N = int(input_data[0])
+    Q = int(input_data[1])
+    s = input_data[2]
+    
+    # Pre-map characters to 0-25 indices (lowercase English alphabet)
+    s_ord = [ord(c) - 97 for c in s]
+    
+    # Large Mersenne prime for collision-proof polynomial hashing
+    M = (1 << 89) - 1
+    B = 100007
+    
+    power = [1] * (N + 1)
+    for i in range(1, N + 1):
+        power[i] = (power[i-1] * B) % M
+        
+    # Construct the static Distance Array (D)
+    # D[i] stores the distance to the previous occurrence of s[i]. 0 if it's the first occurrence.
+    prev = [-1] * 26
+    D = [0] * N
+    for i in range(N):
+        c = s_ord[i]
+        if prev[c] == -1:
+            D[i] = 0
+        else:
+            D[i] = i - prev[c]
+        prev[c] = i
+        
+    # O(N) Rolling hash strictly over the static D array
+    H = [0] * (N + 1)
+    for i in range(N):
+        H[i+1] = (H[i] * B + D[i]) % M
+        
+    # Z_set stores the relative positions of the *first* occurrence of each character dynamically for each suffix
+    Z_set = [None] * N
+    nxt = [N] * 26
+    for i in range(N - 1, -1, -1):
+        nxt[s_ord[i]] = i
+        tmp = set()
+        for c in range(26):
+            if nxt[c] < N:
+                tmp.add(nxt[c] - i)
+        Z_set[i] = tmp
+        
+    # Advanced LCP algorithm via O(1) Segment Jumping
+    def get_lcp(i, j):
+        limit = N - i if N - i < N - j else N - j
+        
+        set_i = Z_set[i]
+        set_j = Z_set[j]
+        
+        # Merge points of interest. 
+        # C-level sorted set union is virtually instantaneous for <= 52 elements.
+        P = sorted(set_i | set_j)
+        
+        for t in range(len(P)):
+            k_t = P[t]
+            if k_t >= limit:
+                break
+                
+            # Verify match at the specific critical index
+            val_i = 0 if k_t in set_i else D[i + k_t]
+            val_j = 0 if k_t in set_j else D[j + k_t]
+            
+            if val_i != val_j:
+                return k_t
+                
+            # Calculate bounds of the contiguous static segment
+            nxt_k = P[t+1] if t + 1 < len(P) else limit
+            if nxt_k > limit:
+                nxt_k = limit
+                
+            L_seg = nxt_k - k_t - 1
+            if L_seg > 0:
+                x = i + k_t + 1
+                y = j + k_t + 1
+                
+                # O(1) Hash verification across the pure static block
+                hx = (H[x + L_seg] - H[x] * power[L_seg]) % M
+                hy = (H[y + L_seg] - H[y] * power[L_seg]) % M
+                
+                if hx == hy:
+                    continue # Complete match across segment
+                    
+                # Mismatch found inside block - binary search to locate precisely
+                low = 1
+                high = L_seg
+                ans = 0
+                while low <= high:
+                    mid = (low + high) // 2
+                    hx = (H[x + mid] - H[x] * power[mid]) % M
+                    hy = (H[y + mid] - H[y] * power[mid]) % M
+                    if hx == hy:
+                        ans = mid
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                return k_t + 1 + ans
+                
+        return limit
+        
+    def compare(i, j):
+        if i == j: return 0
+        lcp = get_lcp(i, j)
+        limit_i = N - i
+        limit_j = N - j
+        
+        if lcp == limit_i and lcp == limit_j: return 0
+        if lcp == limit_i: return -1
+        if lcp == limit_j: return 1
+        
+        val_i = 0 if lcp in Z_set[i] else D[i + lcp]
+        val_j = 0 if lcp in Z_set[j] else D[j + lcp]
+        
+        return -1 if val_i < val_j else 1
+        
+    # Lexicographical sequence strict-weak ordering of Suffixes
+    SA = list(range(N))
+    SA.sort(key=cmp_to_key(compare))
+    
+    rank = [0] * N
+    for idx, val in enumerate(SA):
+        rank[val] = idx
+        
+    # Setup Range Minimum Query (RMQ) Sparse Table for O(1) contiguous block boundary extraction
+    if N > 1:
+        LCP_arr = [0] * (N - 1)
+        for i in range(N - 1):
+            LCP_arr[i] = get_lcp(SA[i], SA[i+1])
+            
+        K_log = (N - 1).bit_length()
+        st = [LCP_arr]
+        for k in range(1, K_log):
+            shift = 1 << (k - 1)
+            prev_st = st[-1]
+            curr = [prev_st[i] if prev_st[i] < prev_st[i+shift] else prev_st[i+shift] for i in range(len(prev_st) - shift)]
+            st.append(curr)
+            
+    # Sweep outputs using Binary Searches combined with Sparse Table LCP
+    ans_out = []
+    queries_idx = 3
+    for _ in range(Q):
+        l_i = int(input_data[queries_idx]) - 1
+        r_i = int(input_data[queries_idx+1]) - 1
+        queries_idx += 2
+        
+        L = r_i - l_i + 1
+        
+        # An isolated character automatically matches cleanly with every other single character map
+        if L == 1:
+            ans_out.append(str(N))
+            continue
+            
+        pos = rank[l_i]
+        
+        # Probe Valid Left Bounds Block
+        low = 0
+        high = pos - 1
+        left_bound = pos
+        while low <= high:
+            mid = (low + high) // 2
+            
+            length = pos - mid
+            k = length.bit_length() - 1
+            val1 = st[k][mid]
+            val2 = st[k][pos - (1 << k)]
+            min_val = val1 if val1 < val2 else val2
+            
+            if min_val >= L:
+                left_bound = mid
+                high = mid - 1
+            else:
+                low = mid + 1
+                
+        # Probe Valid Right Bounds Block
+        low = pos + 1
+        high = N - 1
+        right_bound = pos
+        while low <= high:
+            mid = (low + high) // 2
+            
+            length = mid - pos
+            k = length.bit_length() - 1
+            val1 = st[k][pos]
+            val2 = st[k][mid - (1 << k)]
+            min_val = val1 if val1 < val2 else val2
+            
+            if min_val >= L:
+                right_bound = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+                
+        # Yield the full valid matched Suffix Array region contiguous block size 
+        ans_out.append(str(right_bound - left_bound + 1))
+        
+    sys.stdout.write('\n'.join(ans_out) + '\n')
+
+if __name__ == '__main__':
+    solve()
